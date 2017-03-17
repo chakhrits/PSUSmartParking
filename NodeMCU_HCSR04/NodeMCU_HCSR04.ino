@@ -1,16 +1,28 @@
-#include <stdio.h>
 #include <ESP8266WiFi.h>
+#include<PubSubClient.h>
+
 #define TRIGGER_PIN  D5
 #define ECHO_PIN     D6
 #define B_pin D0
 #define G_pin D3
 #define R_pin D4
-const char* ssid = "";
-const char* password = "";
+
 int st_B = 0;
 int st_G = 0;
 int st_R = 0;
 long distance = 0;
+
+const char* ssid = "";
+const char* password = "";
+
+const char* mqtt_server = "broker.hivemq.com";
+const int mqtt_port = 1883;
+
+const char* pubTopic = "easyparkingPSU";
+//const char* subTopic = "easyparkingPSU";
+
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 void setup() {
   Serial.begin (9600);
@@ -21,34 +33,27 @@ void setup() {
   pinMode(G_pin, OUTPUT);
   pinMode(R_pin, OUTPUT);
 
-  Serial.println("Connecting to ");
-  Serial.println(ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.println("WiFi Connected");
-  Serial.println("IP Address: ");
-  Serial.println(WiFi.localIP());
+  client.setServer(mqtt_server, mqtt_port);
+
 }
 
 void loop() {
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    Serial.print("connect fail!");
-    Serial.print(".");
-    delay(100);
-  }
+  int d = (int)sr04();
   
+  publish_distance(d);
+
   distance = sr04();
   if (distance >= 0 && distance <= 200) {
     displayRGB(1, 0, 0);
   } else {
     displayRGB(0, 1, 0);
   }
+
+  if (!client.connected())
+  {
+    reconnect();
+  }
+  client.loop();
 }
 
 //LED RGB Function
@@ -68,13 +73,67 @@ long sr04()
   digitalWrite(TRIGGER_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIGGER_PIN, LOW);
+
   duration = pulseIn(ECHO_PIN, HIGH);
   distance = (duration / 2) / 29;
+
   Serial.print(distance);
   Serial.println(" cm");
   delay(10);
   return distance;
-
 }
+
+void setup_wifi()
+{
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect()
+{
+  // Loop until we're reconnected
+  while (!client.connected())
+  {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("Chakhrit5730213017"))
+    {
+      Serial.println("connected");
+      // Once connected, publish an announcement...
+      //client.publish(pubTopic, "hello world");
+      // ... and resubscribe
+      //client.subscribe(subTopic);
+    }
+    else
+    {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
+void publish_distance(int d) {
+  char buf[256];
+
+  snprintf(buf, 256, "distance:%d", d);
+  client.publish(pubTopic, buf);
+}
+
 
 
